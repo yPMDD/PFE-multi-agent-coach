@@ -1,0 +1,149 @@
+# Prompt for Figure 2.2 - Request Flow Sequence Diagram
+
+Create a **sequence diagram** showing the complete request/response flow in the PFE Coach system.
+
+## Requirements
+
+Create a **Mermaid sequence diagram** that follows these 7 steps:
+
+### Participants (Actors/Systems)
+1. **User** (student)
+2. **React Frontend** (Client)
+3. **Firebase Auth** (Authentication)
+4. **FastAPI Backend** (API)
+5. **LangGraph** (Orchestrator)
+6. **Supervisor** (Routing Node)
+7. **Agent** (RAG/Writing/Progress)
+8. **ChromaDB** (Vector Store)
+9. **Groq API** (LLM)
+10. **Tavily API** (Web Search - optional)
+
+### Sequence Steps
+
+**Step 1: Authentication**
+```
+User -> React: Opens app
+React -> Firebase: Sign in with Google
+Firebase --> React: Returns ID token
+React -> React: Stores user session
+```
+
+**Step 2: Message Send**
+```
+User -> React: Types message
+React -> FastAPI: POST /invoke with message + X-User-Id header
+FastAPI -> React: 202 Accepted
+```
+
+**Step 3: Validation**
+```
+FastAPI -> FastAPI: Validate X-User-Id header
+FastAPI -> FastAPI: Create/update session in PostgreSQL
+FastAPI -> LangGraph: Invoke graph with state
+```
+
+**Step 4: LangGraph Invocation**
+```
+LangGraph -> LangGraph: Initialize AgentState
+LangGraph -> Supervisor: Route request
+```
+
+**Step 5: Supervisor Routing**
+```
+Supervisor -> Supervisor: Analyze intent (keyword detection)
+Supervisor --> LangGraph: Return intent (rag/writing/progress/general)
+```
+
+**Step 6: Agent Execution**
+```
+LangGraph -> Agent: Execute agent node
+Agent -> ChromaDB: Vector similarity search (RAG context)
+ChromaDB --> Agent: Return top-k documents
+Agent -> Tavily: MCP web search (optional)
+Tavily --> Agent: Return web results
+Agent -> Groq: LLM call with combined context
+Groq --> Agent: Return response
+```
+
+**Step 7: Response with Metadata**
+```
+Agent --> LangGraph: Return response + agent_used + sources_used
+LangGraph --> FastAPI: Return full result
+FastAPI -> PostgreSQL: Store message pair
+FastAPI --> React: Return {response, agent_used, sources_used}
+React --> User: Display with badges
+```
+
+### Visual Style
+- Use numbered steps with labels
+- Show async calls with dashed arrows for database operations
+- Use activation boxes for concurrent operations
+- Color-code: green for success, blue for requests, orange for data ops
+
+### Output Format
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant React
+    participant Firebase
+    participant FastAPI
+    participant LangGraph
+    participant Supervisor
+    participant Agent
+    participant ChromaDB
+    participant Groq
+    participant Tavily
+
+    User->>React: Opens app
+    React->>Firebase: Sign in (Google OAuth)
+    Firebase-->>React: ID Token
+    activate React
+    Note over React: Store session
+    deactivate React
+
+    User->>React: Sends message
+    React->>FastAPI: POST /invoke
+    FastAPI->>FastAPI: Validate header
+
+    FastAPI->>PostgreSQL: Create session
+    PostgreSQL-->>FastAPI: OK
+
+    FastAPI->>LangGraph: graph.invoke(state)
+    activate LangGraph
+
+    LangGraph->>Supervisor: Route intent
+    activate Supervisor
+    Note over Supervisor: Intent detection
+    Supervisor-->>LangGraph: intent=rag
+    deactivate Supervisor
+
+    LangGraph->>Agent: Execute RAG Agent
+    activate Agent
+
+    Agent->>ChromaDB: Vector search
+    ChromaDB-->>Agent: top-k docs
+
+    Agent->>Tavily: Web search (optional)
+    Tavily-->>Agent: Results
+
+    Agent->>Groq: LLM call
+    Groq-->>Agent: Response
+
+    Agent-->>LangGraph: {response, sources}
+    deactivate Agent
+    deactivate LangGraph
+
+    FastAPI->>PostgreSQL: Store messages
+    FastAPI-->>React: {response, agent, sources}
+    React-->>User: Display response
+```
+
+## IMPORTANT
+- Generate ONLY the Mermaid code block
+- Use all 10 participants in correct order
+- Number every step with autonumber
+- Show the complete flow from authentication to response
+- Include both ChromaDB and Tavily as optional sources
+- Make response include sources_used metadata
+```

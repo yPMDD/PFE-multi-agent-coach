@@ -1,0 +1,111 @@
+# Prompt for Figure 3 - LangGraph State Machine Architecture
+
+Create a **flowchart** showing the complete LangGraph state machine for the PFE Coach multi-agent system.
+
+## Requirements
+
+Create a **Mermaid flowchart** showing the state graph structure:
+
+### Graph Structure
+
+**Start Node**
+- START (entry point)
+
+**Supervisor Node**
+- Supervisor (main routing node)
+
+**Conditional Router**
+- Router (conditional edges based on intent)
+
+**Agent Nodes (4 agents)**
+- RAG Agent (intent: rag)
+- Writing Coach (intent: writing_coach)
+- Progress Tracker (intent: progress_tracker)
+- General (intent: general)
+
+**End Node**
+- END
+
+### Conditional Edges from Supervisor
+
+- intent = "rag" → RAG Agent
+- intent = "writing_coach" → Writing Coach
+- intent = "progress_tracker" → Progress Tracker
+- intent = "general" → General (fallback)
+
+### Flow
+```
+START → Supervisor → [Conditional Router based on intent] → 
+    → RAG Agent → END
+    → Writing Coach → END
+    → Progress Tracker → END
+    → General → END
+```
+
+### Visual Elements to Include
+
+1. **Start diamond or circle** labeled "START"
+2. **Supervisor box** (main orchestrator)
+3. **Diamond/Rhombus** labeled "Router" with intent labels on edges
+4. **4 Agent boxes** arranged horizontally or in a diamond pattern
+5. **End circles** for each agent
+6. **Labels on edges**: "intent=rag", "intent=writing_coach", etc.
+
+### Styling
+- Supervisor: Purple fill (#8B5CF6) - main orchestrator
+- RAG Agent: Blue fill (#3B82F6)
+- Writing Coach: Green fill (#10B981)
+- Progress Tracker: Orange fill (#F59E0B)
+- General: Gray fill (#6B7280)
+- Edge labels in bold
+- Include state fields near Supervisor
+
+### Output Format
+```mermaid
+flowchart TD
+    START(["START"]) --> Supervisor
+
+    Supervisor["Supervisor Node<br/>Analyze intent<br/>Set agent_used"]
+
+    Supervisor --> Router{"Router<br/>Conditional Edges"}
+
+    Router -->|"intent = rag"| RAG["RAG Agent<br/>Hybrid RAG + MCP<br/>ChromaDB + Tavily"]
+    Router -->|"intent = writing_coach"| Writing["Writing Coach<br/>Academic feedback<br/>JSON structured response"]
+    Router -->|"intent = progress_tracker"| Progress["Progress Tracker<br/>Milestone queries<br/>PostgreSQL"]
+    Router -->|"intent = general"| General["General Agent<br/>Fallback handler<br/>Small talk"]
+
+    RAG --> END(["
+        END
+        response + sources_used
+    "])
+    Writing --> END
+    Progress --> END
+    General --> END
+
+    %% Styling
+    classDef start fill:#1F2937,stroke:#374151,color:#fff
+    classDef supervisor fill:#8B5CF6,stroke:#7C3AED,color:#fff
+    classDef router fill:#F97316,stroke:#EA580C,color:#fff
+    classDef rag fill:#3B82F6,stroke:#1D4ED8,color:#fff
+    classDef writing fill:#10B981,stroke:#059669,color:#fff
+    classDef progress fill:#F59E0B,stroke:#D97706,color:#000
+    classDef general fill:#6B7280,stroke:#4B5563,color:#fff
+    classDef end fill:#1F2937,stroke:#374151,color:#fff
+
+    class START start
+    class Supervisor supervisor
+    class Router router
+    class RAG rag
+    class Writing writing
+    class Progress progress
+    class General general
+```
+
+## Important
+- Generate ONLY the Mermaid code block
+- Show the complete state graph with all 4 agents
+- Label each conditional edge with its intent value
+- Make Supervisor visually distinct as the main orchestrator
+- Include END nodes for each path
+- Use professional colors per agent
+```

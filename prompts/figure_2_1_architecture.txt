@@ -1,0 +1,102 @@
+# Prompt for Claude to generate Figure 2.1 - System Architecture Diagram
+
+Create a comprehensive **system architecture diagram** for "PFE Coach" - an AI-powered academic assistant application.
+
+## Requirements
+
+Create a **Mermaid flowchart** that shows:
+
+### Main Components (arrange in layers)
+1. **Client Layer** (top):
+   - React Frontend (port 5173) → Firebase Auth (Google OAuth)
+
+2. **Backend/API Layer** (middle):
+   - FastAPI Backend (port 8000) → LangGraph Multi-Agent System
+
+3. **Data/AI Layer** (bottom):
+   - PostgreSQL 15 (port 5432) - relational database
+   - ChromaDB - vector database for RAG
+   - LangGraph - agent orchestration
+
+4. **External Services** (right side, connected via dotted lines):
+   - Groq API → Llama 3.1 8B (LLM)
+   - Tavily API (Web Search)
+
+### Connections (show bidirectional flow with arrows)
+- Frontend ↔ FastAPI (HTTP REST)
+- FastAPI ↔ LangGraph (internal workflow)
+- LangGraph ↔ ChromaDB (vector search)
+- LangGraph ↔ Groq API (LLM calls)
+- LangGraph ↔ Tavily API (MCP web search)
+- FastAPI ↔ PostgreSQL (CRUD operations)
+- Frontend ↔ Firebase Auth (authentication)
+
+### Visual Style
+- Use a **professional light color scheme** with distinct colors per layer
+- Layer labels on the left side
+- Component boxes with rounded corners
+- Port numbers shown in small text
+- Color code: Frontend=blue, FastAPI=green, LangGraph=purple, DB=orange, External=gray
+- Add labels showing data flow types (REST, SQL, Vector, LLM)
+
+### Output Format
+```mermaid
+flowchart TB
+    %% Define subgraphs for layers
+    subgraph client["Client Layer"]
+        direction TB
+        frontend["React + Vite<br/>Port: 5173"]
+        firebase["Firebase Auth<br/>(Google OAuth)"]
+    end
+
+    subgraph api["API Layer"]
+        direction TB
+        fastapi["FastAPI<br/>Port: 8000"]
+        langgraph["LangGraph<br/>Multi-Agent"]
+    end
+
+    subgraph data["Data & AI Layer"]
+        direction TB
+        postgres["PostgreSQL 15<br/>Port: 5432"]
+        chromadb["ChromaDB<br/>(Vector Store)"]
+    end
+
+    subgraph external["External Services"]
+        groq["Groq API<br/>Llama 3.1 8B"]
+        tavily["Tavily API<br/>(Web Search)"]
+    end
+
+    %% Connections with labels
+    frontend -->|"X-User-Id Header"| fastapi
+    frontend -->|"OAuth Token"| firebase
+    fastapi -->|"Invoke Agent"| langgraph
+    langgraph -->|"Vector Search"| chromadb
+    langgraph -->|"LLM Calls"| groq
+    langgraph -->|"MCP Tool"| tavily
+    fastapi -->|"CRUD"| postgres
+
+    %% Styling
+    classDef frontend fill:#3B82F6,stroke:#1D4ED8,color:#fff
+    classDef fastapi fill:#10B981,stroke:#059669,color:#fff
+    classDef langgraph fill:#8B5CF6,stroke:#7C3AED,color:#fff
+    classDef postgres fill:#F59E0B,stroke:#D97706,color:#000
+    classDef chromadb fill:#EC4899,stroke:#DB2777,color:#fff
+    classDef external fill:#6B7280,stroke:#4B5563,color:#fff
+    classDef firebase fill:#FFCB2D,stroke:#F29900,color:#000
+
+    class frontend frontend
+    class fastapi fastapi
+    class langgraph langgraph
+    class postgres postgres
+    class chromadb chromadb
+    class external external
+    class firebase firebase
+```
+
+## IMPORTANT
+- Generate ONLY the Mermaid code block
+- Include all 4 layers with proper spacing
+- Show clear data flow arrows
+- Include port numbers and service names
+- Make it visually organized and professional
+- Use the exact component names and port numbers specified

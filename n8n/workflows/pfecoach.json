@@ -1,0 +1,780 @@
+{
+  "name": "PFE Coach - Main Supervisor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pfe-coach",
+        "options": {}
+      },
+      "id": "a4019afd-c1b3-4fd0-8255-0a12148e939a",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        272
+      ],
+      "webhookId": "639a75a4-5feb-469a-a888-a1e93045837c"
+    },
+    {
+      "parameters": {
+        "url": "=http://192.168.1.4:8000/sessions/messages/{{ $json.body.session_id }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 50
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "b2928f8d-5892-4dcf-9d1a-da48aeb7792f",
+      "name": "Get Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -96,
+        464
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst message = data.message || data.body?.message || '';\nconst msg = message.toLowerCase();\nlet intent = 'rag';\nif (['feedback', 'review', 'relire', 'corriger', 'mon texte', 'my text', 'evaluate'].some(k => msg.includes(k))) {\n  intent = 'writing_coach';\n} else if (['deadline', 'milestone', 'avancement', 'retard', 'progress', 'on track', 'due'].some(k => msg.includes(k))) {\n  intent = 'progress_tracker';\n}\nreturn [{\n  json: {\n    message: message,\n    student_id: data.student_id,\n    session_id: data.session_id,\n    history: data.history || [],\n    intent: intent\n  }\n}];"
+      },
+      "id": "7cdd5317-41de-4806-bc30-c6f8f96d655e",
+      "name": "Intent Classifier",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.intent }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "writing_coach"
+            },
+            {
+              "value2": "progress_tracker",
+              "output": 1
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      },
+      "id": "b98e6f57-b1a9-497f-a1b8-208269069194",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        144,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.4:8000/sessions/messages",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $('Code in JavaScript').item.json.body.session_id }}"
+            },
+            {
+              "name": "role",
+              "value": "assisstant"
+            },
+            {
+              "name": "content",
+              "value": "={{ $json.response }}"
+            },
+            {
+              "name": "agent_used",
+              "value": "={{ $json.agent_used }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "61d47830-e14e-44bf-9940-40a941afd02c",
+      "name": "Save Assistant Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1504,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"response\": $json.response, \"agent_used\": $json.agent_used, \"session_id\": $json.session_id } }}",
+        "options": {}
+      },
+      "id": "22afc91c-eaff-4da2-aaee-6035145b3b70",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1664,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://192.168.1.4:8000/milestones/{{ $('Webhook').item.json.body.student_id }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "b487aa12-3990-4719-9488-709792d230b8",
+      "name": "Get Milestones",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        400,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const triggerData = $input.first().json;\nlet milestonesData = $input.all()[0]?.json;\n// Handle different data formats\nlet milestones = [];\nif (Array.isArray(milestonesData)) {\n  milestones = milestonesData;\n} else if (milestonesData && typeof milestonesData === 'object') {\n  // Maybe wrapped in a property like milestones: [...]\n  milestones = milestonesData.milestones || milestonesData.data || [milestonesData];\n}\nconst completed = milestones.filter(m => m.completed);\nconst pending = milestones.filter(m => !m.completed);\nconst today = new Date().toISOString().split('T')[0];\nconst overdue = pending.filter(m => m.due_date && m.due_date < today);\nconst context = `Student milestones as of today (${today}):\nCompleted (${completed.length}): ${completed.map(m => m.title).join(', ') || 'none'}\nPending (${pending.length}): ${pending.map(m => `${m.title} (due: ${m.due_date})`).join(', ') || 'none'}\nOverdue (${overdue.length}): ${overdue.map(m => m.title).join(', ') || 'none'}`;\nreturn [{ json: { context, message: triggerData.message, student_id: triggerData.student_id, session_id: triggerData.session_id } }];"
+      },
+      "id": "5eea03d3-7acd-465d-a335-42ebdd2e3cdf",
+      "name": "Build Progress Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ff461668-9bcf-4f5d-a457-80b1d1064e14",
+      "name": "Call Groq LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        976,
+        272
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "HaKlhrTaPIN2iq9J",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const responseData = $input.first().json;\nconst content = responseData.choices?.[0]?.message?.content || \"I couldn't get a response.\";\nreturn [{ json: { \n  response: content, \n  agent_used: 'progress_tracker', \n  student_id: responseData.student_id, \n  session_id: responseData.session_id \n} }];"
+      },
+      "id": "4b087e84-545c-4626-9e1a-e3cbb726ea02",
+      "name": "Extract Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.4:8000/rag/query",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "name": "top_k",
+              "value": "4"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "ee4ad783-dc53-4b3a-af57-81993f27e589",
+      "name": "Query RAG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        336,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst chunks = data.chunks ? data.chunks.join('\\n\\n---\\n\\n') : '';\nconst history = data.history || [];\nconst historyText = history.map(m => `${m.role}: ${m.content}`).join('\\n');\nconst systemPrompt = `You are PFE Coach, an academic advisor helping a university student complete their final-year project.\nYour role is to GUIDE, not to do the work for the student.\nUse the provided context to answer the student's question clearly and concisely.\nIf the answer is not in the context, say so honestly.\nNever write report sections on behalf of the student. Explain concepts, suggest approaches, and ask guiding questions.\nAlways respond in the same language the student used (French or English).\nContext:\n${chunks}`;\nreturn [{\n  json: {\n    systemPrompt,\n    historyText,\n    message: data.message,\n    student_id: data.student_id,\n    session_id: data.session_id\n  }\n}];"
+      },
+      "id": "b4b3a37e-8027-4c81-b0f3-f7b010084896",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ab355e04-54ff-44e6-9ffb-307c23eb1f9e",
+      "name": "Call Groq LLM1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        880,
+        464
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "HaKlhrTaPIN2iq9J",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst content = data.choices?.[0]?.message?.content || 'No response';\nreturn [{\n  json: {\n    response: content,\n    agent_used: 'rag'\n  }\n}];"
+      },
+      "id": "435e4627-6b3d-4f88-8db7-1d7813ff2936",
+      "name": "Extract Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message.toLowerCase();\nconst isWriteRequest = ['write for me', 'écris pour moi', 'write my', 'rédige', 'complete this', 'finish this'].some(k => msg.includes(k));\nreturn [{ json: { ...$input.first().json, isWriteRequest } }];"
+      },
+      "id": "8d388345-7fd6-45b1-8214-c7708b4a3186",
+      "name": "Detect Write Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "value1": "={{ $json.isWriteRequest }}",
+        "rules": {
+          "rules": [
+            {
+              "operation": "equal",
+              "output": 1
+            }
+          ]
+        },
+        "fallbackOutput": 1
+      },
+      "id": "a99e4413-e944-40c4-ba40-3231976998c7",
+      "name": "If Write Request",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        512,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { response: \"I'm here to guide you, not to write for you. Please share your text and I'll help you improve it by pointing out issues and suggesting corrections. This way you'll learn and develop your academic writing skills.\", agent_used: 'writing_coach', student_id: $input.first().json.student_id, session_id: $input.first().json.session_id } }];"
+      },
+      "id": "e0a3398e-046c-4b9c-889c-da2764f10bf8",
+      "name": "Refusal Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const systemPrompt = `You are an academic writing coach for final-year engineering students.\nAnalyze the submitted text for:\n- Clarity: are ideas expressed clearly?\n- Structure: does it follow proper academic structure?\n- Tone: is the language formal and academic?\n- Content: does the section contain what it should?\n\nCRITICAL RULE — Value Alignment:\nYou must NEVER rewrite or complete the text for the student.\nOnly identify issues and suggest improvements.\nBe constructive and specific. Vague feedback is not acceptable.\nRespond in the same language the student used.\n\nReturn your response as a JSON object with this exact structure:\n{\n  \"overall\": \"short overall assessment\",\n  \"issues\": [{ \"type\": \"clarity|structure|tone|content\", \"description\": \"...\", \"suggestion\": \"...\" }],\n  \"strengths\": [\"...\"],\n  \"next_step\": \"one concrete action\"\n}\nReturn only the JSON object, no preamble, no markdown fences.`;\n\nreturn [{ json: { systemPrompt, message: $input.first().json.message, student_id:$input.first().json.student_id , session_id: $input.first().json.session_id } }];"
+      },
+      "id": "048c359e-b637-49fd-bfe7-48b9072d19d8",
+      "name": "Build Coach Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $input.first().json.choices[0].message.content;\nlet feedback;\ntry {\n  feedback = JSON.parse(content);\n} catch (e) {\n  feedback = { overall: content, issues: [], strengths: [], next_step: \"Unable to parse feedback\" };\n}\n\nconst response = `Overall: ${feedback.overall}\\n\\nIssues:\\n${feedback.issues.map(i => `- [${i.type.toUpperCase()}] ${i.description} → ${i.suggestion}`).join('\\n')}\\n\\nStrengths:\\n${feedback.strengths.map(s => '- ' + s).join('\\n')}\\n\\nNext Step: ${feedback.next_step}`;\n\nreturn [{ json: { response, agent_used: 'writing_coach', student_id:$('Webhook').first().json.body.student_id , session_id:  $('Webhook').first().json.body.session_id} }];"
+      },
+      "id": "ec8af2aa-331b-413a-b221-60101e719c5f",
+      "name": "Parse Feedback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "95d469bf-2ae8-4321-adcb-56976222be3e",
+      "name": "Call Groq LLM2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1120,
+        48
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "HaKlhrTaPIN2iq9J",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nreturn $input.first().json;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        240
+      ],
+      "id": "85f50e33-5914-4f04-aef6-2518bed7b4fb",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst body = {\n  model: \"llama-3.1-8b-instant\",\n  temperature: 0.3,\n  messages: [\n    { role: \"system\", content: String(data.systemPrompt || \"\") },\n    { role: \"user\", content: String(data.message || \"\") }\n  ]\n};\nreturn [{ json: body }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        464
+      ],
+      "id": "07e336ca-2200-43a7-8cdf-9edf53892a34",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $input.first().json.context;\nconst userMessage = $input.first().json.message || \"What is my progress?\";\nconst studentId = $input.first().json.student_id;\nconst sessionId = $input.first().json.session_id;\nconst messages = [\n  {\n    role: \"system\",\n    content: \"You are a progress tracker for university final-year projects. Use ONLY the provided milestone data to answer the student's questions. Never invent deadlines or milestones. If you need information not in the context, say so. Provide encouraging, actionable guidance. Respond in the same language the student used.\\n\\nContext:\\n\" + context\n  },\n  { \n    role: \"user\", \n    content: userMessage \n  }\n];\nconst body = {\n  model: \"llama-3.1-8b-instant\",\n  temperature: 0.3,\n  messages: messages\n};\nreturn [{ json: { body: JSON.stringify(body), student_id: studentId, session_id: sessionId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        272
+      ],
+      "id": "e0a23797-6bf8-40fe-8aa9-23ff007d93de",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $input.first().json.context || \"\";\nconst userMessage = $input.first().json.message || \"Please review my writing\";\nconst studentId = $input.first().json.student_id;\nconst sessionId = $input.first().json.session_id;\nconst messages = [\n  {\n    role: \"system\", \n    content: \"You are a writing coach for university final-year projects. Help students improve their academic writing. Provide specific, constructive feedback. If you don't have enough context, ask for the text to review.\\n\\nContext: \" + context\n  },\n  { \n    role: \"user\", \n    content: userMessage \n  }\n];\nconst body = {\n  model: \"llama-3.1-8b-instant\",\n  temperature: 0.3,\n  messages: messages\n};\nreturn [{ json: { body: JSON.stringify(body), student_id: studentId, session_id: sessionId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        -16
+      ],
+      "id": "20cb0a34-50ee-4a23-9fff-b329d41fb354",
+      "name": "Code in JavaScript3"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "localhost:5678",
+            "connection": "keep-alive",
+            "content-length": "3468",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            "accept": "application/json, text/plain, */*",
+            "sec-ch-ua": "\"Chromium\";v=\"148\", \"Brave\";v=\"148\", \"Not/A)Brand\";v=\"99\"",
+            "content-type": "application/json",
+            "sec-ch-ua-mobile": "?0",
+            "sec-gpc": "1",
+            "accept-language": "en-US,en;q=0.8",
+            "origin": "http://localhost:5174",
+            "sec-fetch-site": "same-site",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "empty",
+            "referer": "http://localhost:5174/",
+            "accept-encoding": "gzip, deflate, br, zstd"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "student_id": "1200dc8e-d689-453e-8cbc-03b208d4e2e4",
+            "session_id": "4cd585f3-a379-440c-9eb6-5d99e170eea7",
+            "message": "[REVIEW] 3.1 Architecture Générale de l'Application\nL'application développée dans le cadre de ce projet de fin d'études repose sur une architecture trois tiers, séparant clairement les responsabilités entre la couche présentation, la couche métier et la couche de persistance des données. Ce choix architectural garantit une meilleure maintenabilité du code, une scalabilité accrue et une indépendance entre les différentes composantes du système.\nLa couche présentation est assurée par un frontend développé avec le framework Angular (version 16), offrant une interface utilisateur dynamique et réactive. Angular a été retenu pour ses capacités en matière de composants réutilisables, sa gestion native des formulaires réactifs, ainsi que son écosystème mature adapté aux applications d'entreprise.\nLa couche métier est quant à elle implémentée à l'aide de Spring Boot (version 3.1), un framework Java qui simplifie considérablement le développement d'APIs RESTful robustes et sécurisées. Spring Security a été intégré pour gérer l'authentification et les autorisations au niveau des endpoints, tandis que Spring Data JPA facilite les interactions avec la base de données.\nEnfin, la couche de persistance s'appuie sur MySQL, un système de gestion de bases de données relationnelles largement adopté dans les environnements professionnels, garantissant l'intégrité référentielle des données et des performances satisfaisantes pour le volume de données attendu.\n3.2 Modélisation des Données\nLa modélisation de la base de données a été réalisée en suivant les règles de normalisation jusqu'à la troisième forme normale (3NF), afin d'éliminer les redondances et d'assurer la cohérence des données. Les entités principales identifiées lors de la phase d'analyse sont les suivantes :\n\nProjet : entité centrale du système, caractérisée par un identifiant unique, un intitulé, une description, une date de début, une date de fin prévisionnelle, un statut et un responsable assigné.\nUtilisateur : représente les acteurs du système (chefs de projet, directeurs, administrateurs), avec un contrôle d'accès basé sur les rôles (RBAC).\nTâche : sous-élément d'un projet, permettant un suivi granulaire de l'avancement.\nRapport : document généré automatiquement ou manuellement, associé à un ou plusieurs projets.\n\nLe diagramme entité-association (ERD) ci-dessous illustre les relations entre ces entités ainsi que les cardinalités associées.\n3.3 Choix Technologiques et Justification\nLe choix des technologies utilisées dans ce projet n'est pas le fruit du hasard, mais résulte d'une analyse comparative menée en tenant compte des contraintes imposées par l'environnement informatique de la DSI d'ONEE – Branche Eau, notamment en termes de compatibilité avec l'infrastructure existante, de facilité de déploiement et de courbe d'apprentissage.\nAngular a été préféré à d'autres frameworks comme React ou Vue.js en raison de sa nature fortement typée grâce à TypeScript, de sa structure opinionnée qui favorise la cohérence du code au sein d'une équipe, et de son support natif des modules, services et injections de dépendances — des fonctionnalités particulièrement adaptées à une application de gestion à grande échelle.\n"
+          },
+          "webhookUrl": "http://localhost:5678/webhook/pfe-coach",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Messages": {
+      "main": [
+        []
+      ]
+    },
+    "Intent Classifier": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Assistant Message": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Milestones": {
+      "main": [
+        [
+          {
+            "node": "Build Progress Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Progress Context": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq LLM": {
+      "main": [
+        [
+          {
+            "node": "Extract Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query RAG": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq LLM1": {
+      "main": [
+        [
+          {
+            "node": "Extract Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Write Request": {
+      "main": [
+        [
+          {
+            "node": "If Write Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Write Request": {
+      "main": [
+        [
+          {
+            "node": "Refusal Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Coach Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refusal Response": {
+      "main": [
+        [
+          {
+            "node": "Save Assistant Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Coach Prompt": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Feedback": {
+      "main": [
+        [
+          {
+            "node": "Save Assistant Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq LLM2": {
+      "main": [
+        [
+          {
+            "node": "Parse Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Detect Write Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Milestones",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Response": {
+      "main": [
+        [
+          {
+            "node": "Save Assistant Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Response1": {
+      "main": [
+        [
+          {
+            "node": "Save Assistant Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Intent Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Call Groq LLM1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Call Groq LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Call Groq LLM2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1004204f-1643-45d2-b1a7-b8ac8ddae0df",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f280c9ac60ae96cf38428e72ccb073e139ce7b10f96e8ee0a4e6917fd23b1388"
+  },
+  "id": "pqmdfhJ64g8cKt6S",
+  "tags": []
+}
